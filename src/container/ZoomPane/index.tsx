@@ -163,7 +163,18 @@ const ZoomPane = ({
   useEffect(() => {
     if (d3Zoom) {
       if (selectionKeyPressed) {
-        d3Zoom.on('zoom', null);
+        d3Zoom.on('zoom', (event: any) => {
+          if (event?.sourceEvent) {
+            return;
+          }
+
+          updateTransform([event.transform.x, event.transform.y, event.transform.k]);
+
+          if (onMove) {
+            const flowTransform = eventToFlowTransform(event.transform);
+            onMove(flowTransform);
+          }
+        });
       } else {
         d3Zoom.on('zoom', (event: any) => {
           updateTransform([event.transform.x, event.transform.y, event.transform.k]);

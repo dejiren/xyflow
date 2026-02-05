@@ -28,7 +28,6 @@ const useZoomPanHelper = (): ZoomPanHelperFunctions => {
   const store = useStore();
   const d3Zoom = useStoreState((s) => s.d3Zoom);
   const d3Selection = useStoreState((s) => s.d3Selection);
-
   const zoomPanHelperFunctions = useMemo<ZoomPanHelperFunctions>(() => {
     if (d3Selection && d3Zoom) {
       return {

@@ -5077,7 +5077,18 @@ var ZoomPane = function ZoomPane(_ref) {
   useEffect(function () {
     if (d3Zoom) {
       if (selectionKeyPressed) {
-        d3Zoom.on('zoom', null);
+        d3Zoom.on('zoom', function (event) {
+          if (event !== null && event !== void 0 && event.sourceEvent) {
+            return;
+          }
+
+          updateTransform([event.transform.x, event.transform.y, event.transform.k]);
+
+          if (onMove) {
+            var flowTransform = eventToFlowTransform(event.transform);
+            onMove(flowTransform);
+          }
+        });
       } else {
         d3Zoom.on('zoom', function (event) {
           updateTransform([event.transform.x, event.transform.y, event.transform.k]);
