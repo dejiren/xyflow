@@ -237,7 +237,9 @@ const ZoomPane = ({
         // during a selection we prevent all other interactions
         if (
           selectionKeyPressed &&
-          (event.type !== 'mousedown' || !selectionModifierKey || event[selectionModifierKey])
+          ((event.type !== 'mousedown' && event.type !== 'touchstart') ||
+            !selectionModifierKey ||
+            event[selectionModifierKey])
         ) {
           return false;
         }

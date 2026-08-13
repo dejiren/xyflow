@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Digest: #4673 macOSスクリーンショット後のShift状態</title>
+  <link rel="stylesheet" href="report.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow"><span>Issue #4673</span> Local HTML Report</div>
+      <h1>Code Digest: #4673 macOSスクリーンショット後のShift状態</h1>
+      <p class="lead">macOSのスクリーンショット操作で欠落するShiftのkeyupを、次のpointerdownと実イベントのmodifier判定で補正し、1回目の通常ドラッグからキャンバス移動へ戻す変更。</p>
+    </header>
+
+    <nav class="toc" aria-label="目次">
+      <a href="#overview"><strong>01</strong>概要</a>
+      <a href="#data-structure"><strong>02</strong>データ構造</a>
+      <a href="#storage"><strong>03</strong>保管場所</a>
+      <a href="#flow"><strong>04</strong>データの流れ</a>
+      <a href="#timing"><strong>05</strong>タイミング</a>
+      <a href="#walkthrough"><strong>06</strong>ウォークスルー</a>
+      <a href="#validation"><strong>07</strong>検証と範囲</a>
+    </nav>
+
+    <!-- REPORT_BODY_START -->
+    <section id="overview">
+      <h2>01. 概要</h2>
+      <p>macOSのCmd+Shift+3/4/5によるスクリーンショット後、ブラウザーにShiftのkeyupが届かず、Shift状態がtrueのまま残ることがある。その後にShiftを押さずドラッグすると、通常のキャンバス移動ではなく、範囲選択として解釈されるのが#4673の不具合だった。</p>
+      <div class="callout ok">
+        <strong>変更の要点</strong>
+        <ul>
+          <li>xyflow forkの修飾キー状態を、modifierなしのpointerdownで実イベントへ再同期。</li>
+          <li>UserSelectionとZoomPaneが、保持stateだけでなくmousedown/mousemoveの実modifierも確認。</li>
+          <li>portal独自の選択オーバーレイはイベントを奪わず、Flow wrapperのcaptureで実Shift時だけ選択処理を開始。</li>
+          <li>通常のShift+ドラッグ範囲選択は維持し、Shiftなしの1回目のドラッグを通常panへ戻す。</li>
+          <li>xyflowのsource変更を通常/ESM、CSS/nocssのdistへ反映し、portalは作業中のforkを参照。</li>
+        </ul>
+      </div>
+      <div class="callout note">
+        <strong>最終修正に含めないもの</strong>
+        <p>途中で調査したRedux store設定や循環参照チェックの無効化は、最終差分に含めていない。<code>src/store/configure-store.ts</code>は元の実装に戻っており、チェック無効化によって問題を隠す設計にはしていない。一時的なブラウザログ、Viteのデバッグendpoint、debug属性も削除済み。</p>
+      </div>
+      <p>変更は2つのworktreeにまたがる。共通ライブラリ側の再発防止をxyflow forkに入れ、portal側の独自overlayにも同じ入力イベントの原則を適用する構成になっている。</p>
+      <div class="table-scroll"><table>
+        <thead><tr><th>対象</th><th>責務</th><th>今回の変更</th></tr></thead>
+        <tbody>
+          <tr><td>xyflow fork</td><td>React Flow共通のkeyboard / selection / pan</td><td>modifier再同期、実イベント判定、回帰テスト、dist生成</td></tr>
+          <tr><td>portal</td><td>フローエディター固有のkeyboard state / overlay</td><td>pointerdown再同期、overlayの透過、captureでの選択開始</td></tr>
+          <tr><td>作業環境</td><td>portalから未公開forkを読み込む</td><td>local file dependencyを設定（公開前に戻す対象）</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="data-structure">
+      <h2>02. データ構造</h2>
+      <p>今回増えたのはフロー定義のデータではなく、「設定値」と「DOMイベントの実値」を接続するための型・props・一時stateである。</p>
+      <div class="ascii"><pre>KeyCode (例: "Shift")
+        ↓ getModifierKey
+ModifierKey (例: "shiftKey")
+        ↓ event[selectionModifierKey]
+MouseEvent / PointerEvent の実modifier
+
+保持state                         実イベント
+  selectionKeyPressed               event.shiftKey
+  isShiftPressed                    event.ctrlKey / event.metaKey
+        └──────────────┬──────────────┘
+                       ↓
+          selection開始 / 通常panの判定</pre></div>
+      <p>追加・接続された主な型と状態:</p>
+      <ul>
+        <li><code>ModifierKey</code> — <code>shiftKey</code>などDOM eventのproperty名を表す型。</li>
+        <li><code>getModifierKey(keyCode)</code> — Shift / Control / Meta / Altの設定値をDOM propertyへ変換。</li>
+        <li><code>selectionKeyCode?: KeyCode</code> — FlowRendererからUserSelection / ZoomPaneへ渡す設定。</li>
+        <li><code>selectionKeyPressed</code> — xyflowの<code>useKeyPress</code>が保持する状態。</li>
+        <li><code>isShiftPressed</code> / <code>isCtrlPressed</code> — portal独自の<code>useKeyboardState</code>が保持する状態。</li>
+      </ul>
+      <p>参照ファイル:</p>
+      <ul>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/hooks/useKeyPress.ts</code> — modifier解決と状態再同期。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/container/FlowRenderer/index.tsx</code> — <code>selectionKeyCode</code>の接続。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/UserSelection/index.tsx</code> — 範囲選択の実イベント判定。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/container/ZoomPane/index.tsx</code> — d3-zoomのpan filter。</li>
+        <li><code>/Users/nakamoto/dejiren/portal.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/organisms/flow/OperatingProcedureFlow/hooks/KeyboardState.tsx</code> — portal独自state。</li>
+      </ul>
+    </section>
+
+    <section id="storage">
+      <h2>03. 保管場所</h2>
+      <div class="callout note"><strong>永続化なし</strong><p>Shift / Ctrl / Cmdの状態はReact hookのメモリ上だけに存在する。localStorage、IndexedDB、サーバーAPI、フロー定義データは変更しない。</p></div>
+      <ul>
+        <li>xyflowの保持先: <code>useKeyPress</code>内の<code>useState(false)</code>。</li>
+        <li>portalの保持先: <code>useKeyboardState</code>内の<code>isShiftPressed</code> / <code>isCtrlPressed</code>。</li>
+        <li>解除トリガー: keyup、blur、modifierなしのpointerdown。</li>
+        <li>配布物: packageの<code>main</code> / <code>module</code>が読む通常版・ESM版、CSS版・nocss版のdist。</li>
+      </ul>
+      <div class="callout warn"><strong>作業環境上の差分</strong><p>portalの<code>package.json</code>と<code>package-lock.json</code>は、未公開のxyflow forkを<code>file:../../xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673</code>で読み込むため変更されている。これは動作確認用の接続であり、PRを公開する前には配布元の適切なcommit参照へ戻す必要がある。</p></div>
+    </section>
+
+    <section id="flow">
+      <h2>04. データの流れ</h2>
+      <div class="comparison-head" aria-hidden="true">
+        <div class="comparison-title existing"><span>BEFORE</span> 以前</div>
+        <div class="comparison-title new"><span>AFTER</span> 現在</div>
+      </div>
+      <div class="java-comparison">
+        <article class="comparison-panel existing">
+          <h3>保持stateだけを信頼</h3>
+          <div class="ascii"><pre>Cmd+Shift+4
+  → Shift keyup欠落
+  → selection state = trueのまま
+  → overlay / selection paneが有効
+  → Shiftなしの最初のdragも
+     selection扱いまたはpan拒否
+  → クリックで状態が変わる
+  → 2回目からpan</pre></div>
+        </article>
+        <article class="comparison-panel new">
+          <h3>stateと実イベントを照合</h3>
+          <div class="ascii"><pre>Cmd+Shift+4後のpointerdown
+  → event.shiftKey = false
+  → xyflow / portal stateをfalseへ再同期
+  → overlayはpointerEvents:none
+  → wrapper captureもselectionを開始しない
+  → UserSelectionは選択を拒否
+  → ZoomPaneは通常panを許可
+  → 同じ1回目のdragで移動</pre></div>
+        </article>
+      </div>
+      <p>依存方向は片方向である。keyboard hookが状態を持ち、FlowRendererが設定を下位へ渡し、UserSelectionとZoomPaneが「保持state + 実イベント」で最終判定する。portalでは同じ原則を独自overlayにも適用する。</p>
+      <div class="ascii"><pre>xyflow
+  useKeyPress
+    ├─ pointerdownでmodifierなしを検出 → key stateをfalse
+    ├─ UserSelection → mousedown / mousemoveの実modifierを確認
+    └─ ZoomPane → stale selection中のmodifierなしmousedownだけpanを許可
+
+portal
+  useKeyboardState
+    └─ capture段階のpointerdownでisShiftPressed / isCtrlPressedを補正
+  OperatingProcedureFlow
+    ├─ overlay: 表示専用（pointerEvents:none）
+    └─ wrapper onMouseDownCapture: 実Shiftありの場合だけ選択開始</pre></div>
+      <p>参照ファイル:</p>
+      <ul>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/hooks/useKeyPress.ts</code></li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/UserSelection/index.tsx</code></li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/container/ZoomPane/index.tsx</code></li>
+        <li><code>/Users/nakamoto/dejiren/portal.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/organisms/flow/OperatingProcedureFlow/OperatingProcedureFlow.tsx</code></li>
+        <li><code>/Users/nakamoto/dejiren/portal.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/organisms/flow/OperatingProcedureFlow/hooks/KeyboardState.tsx</code></li>
+      </ul>
+    </section>
+
+    <section id="timing">
+      <h2>05. タイミング</h2>
+      <div class="table-scroll"><table>
+        <thead><tr><th>タイミング</th><th>処理</th><th>最終挙動</th></tr></thead>
+        <tbody>
+          <tr><td>Shift keydown</td><td>xyflowの<code>selectionKeyPressed</code>、portalの<code>isShiftPressed</code>をtrueにする。</td><td>Shift+ドラッグの範囲選択を開始できる。</td></tr>
+          <tr><td>通常のShift keyup</td><td>従来どおり各stateをfalseにする。</td><td>既存動作を維持。</td></tr>
+          <tr><td>スクリーンショット後のmodifierなし pointerdown</td><td>capture段階でxyflowとportalのstale stateをfalseへ再同期する。</td><td>keyupが欠落しても次の操作で回復。</td></tr>
+          <tr><td>同じ操作のmousedown</td><td>実イベントにShiftがなければUserSelectionを開始しない。</td><td>1回目から通常panへ進める。</td></tr>
+          <tr><td>同じ操作のd3-zoom filter</td><td>staleな選択state中でも、modifierなしmousedownのselectionブロックを例外扱いする。</td><td>キャンバス移動を許可。</td></tr>
+          <tr><td>実際のShift+ドラッグ</td><td>pointerdownでstateを解除せず、実modifierチェックも通る。</td><td>従来どおり範囲選択。</td></tr>
+          <tr><td>cleanup / unmount</td><td>pointerdown listenerをkeydown/keyup listenerと同じ参照で解除する。</td><td>listenerの残留を防ぐ。</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout ok"><strong>期待する操作結果</strong><p>スクリーンショット後、カーソル表示が一時的にcrosshairのままでも、最初のクリック・ドラッグのpointerdownで状態が補正され、その操作自体が通常の移動として成立する。リセット用の空クリックを別に挟む必要はない。</p></div>
+    </section>
+
+    <section id="walkthrough">
+      <h2>06. ウォークスルー</h2>
+      <ol class="checklist">
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/hooks/useKeyPress.ts</code> — keyCodeとDOM modifierの対応、pointerdown再同期、listener cleanupを確認。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/container/FlowRenderer/index.tsx</code> — <code>selectionKeyCode</code>がZoomPaneとUserSelectionへ渡ることを確認。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/UserSelection/index.tsx</code> — 実modifierなしのmousedown / mousemoveを範囲選択に使わないことを確認。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/src/container/ZoomPane/index.tsx</code> — staleなselection state中でもmodifierなしmousedownをpanへ通す条件を確認。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/cypress/integration/flow/basic.spec.js</code> — pointerdownとstale mousedownの回帰ケースを確認。</li>
+        <li><code>/Users/nakamoto/dejiren/portal.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/organisms/flow/OperatingProcedureFlow/hooks/KeyboardState.tsx</code> — portal独自keyboard stateを同じpointerdownで補正することを確認。</li>
+        <li><code>/Users/nakamoto/dejiren/portal.worktree/codex-fix-macos-screenshot-shift-state-4673/src/components/organisms/flow/OperatingProcedureFlow/OperatingProcedureFlow.tsx</code> — overlayを表示専用にし、wrapper captureで実Shift時だけ選択を開始することを確認。</li>
+        <li><code>/Users/nakamoto/dejiren/xyflow.worktree/codex-fix-macos-screenshot-shift-state-4673/dist/ReactFlow*.js</code> / <code>dist/nocss/ReactFlow-nocss*.js</code> — source修正が配布bundleへ反映されていることを確認。</li>
+      </ol>
+    </section>
+
+    <section id="validation">
+      <h2>07. 検証と範囲</h2>
+      <div class="table-scroll"><table>
+        <thead><tr><th>項目</th><th>結果</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td>portal targeted Jest</td><td>6 tests passed</td><td>既存のblock selection関連テストを確認。</td></tr>
+          <tr><td>portal build</td><td>成功</td><td>既存のRollup circular re-export / large chunk warningは残るが、build errorはない。</td></tr>
+          <tr><td>xyflow build</td><td>成功</td><td>通常版・nocss版のdistを生成。</td></tr>
+          <tr><td>配布JS syntax check</td><td>成功</td><td><code>dist/ReactFlow.js</code>とnocss版を<code>node --check</code>で確認。</td></tr>
+          <tr><td>生成d.tsのdiff check</td><td>注意</td><td>CRLF由来のtrailing whitespace警告がある。生成物の改行形式であり、sourceの型エラーではない。</td></tr>
+          <tr><td>回帰テスト</td><td>追加済み・実行は別途</td><td>stale pointerdownとstale mousedownをCypressに追加。</td></tr>
+          <tr><td>手動画面確認</td><td>ユーザー確認済み</td><td>元の不具合が解消し、最初の操作から移動できることを確認。</td></tr>
+          <tr><td>一時ログ検索</td><td>残存なし</td><td>ブラウザログ、Vite debug endpoint、debug属性を削除。</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout warn"><strong>公開前に確認すること</strong><ul><li>portalのlocal file dependencyを公開forkのcommit参照へ戻す。</li><li>xyflowの生成distを公開物として含める運用か、リポジトリ規約に合わせて確認する。</li><li>Cypress回帰テストをCIまたはローカルで実行する。</li></ul></div>
+      <p>機能修正の本質は、キーボード状態の復元ではなく「次のポインターイベントで実際のmodifierを確認し、selectionとpanの境界でstateだけを信頼しないこと」である。これにより、macOS固有のkeyup欠落を、通常のユーザー操作の中で局所的に回復できる。</p>
+    </section>
+    <!-- REPORT_BODY_END -->
+
+    <footer>Generated 2026-07-22 JST</footer>
+  </div>
+</body>
+</html>

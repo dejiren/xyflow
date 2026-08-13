@@ -5214,7 +5214,7 @@ var ZoomPane = function ZoomPane(_ref) {
         } // during a selection we prevent all other interactions
 
 
-        if (selectionKeyPressed && (event.type !== 'mousedown' || !selectionModifierKey || event[selectionModifierKey])) {
+        if (selectionKeyPressed && ((event.type !== 'mousedown' && event.type !== 'touchstart') || !selectionModifierKey || event[selectionModifierKey])) {
           return false;
         } // if zoom on double click is disabled, we prevent the double click event
 
