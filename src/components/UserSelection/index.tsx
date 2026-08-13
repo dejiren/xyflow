@@ -5,10 +5,12 @@
 import React, { memo } from 'react';
 
 import { useStoreActions, useStoreState } from '../../store/hooks';
-import { XYPosition } from '../../types';
+import { KeyCode, XYPosition } from '../../types';
+import { getModifierKey } from '../../hooks/useKeyPress';
 
 type UserSelectionProps = {
   selectionKeyPressed: boolean;
+  selectionKeyCode?: KeyCode;
 };
 
 function getMousePosition(event: React.MouseEvent): XYPosition | void {
@@ -44,7 +46,7 @@ const SelectionRect = () => {
   );
 };
 
-export default memo(({ selectionKeyPressed }: UserSelectionProps) => {
+export default memo(({ selectionKeyPressed, selectionKeyCode }: UserSelectionProps) => {
   const selectionActive = useStoreState((state) => state.selectionActive);
   const elementsSelectable = useStoreState((state) => state.elementsSelectable);
 
@@ -52,6 +54,7 @@ export default memo(({ selectionKeyPressed }: UserSelectionProps) => {
   const updateUserSelection = useStoreActions((actions) => actions.updateUserSelection);
   const unsetUserSelection = useStoreActions((actions) => actions.unsetUserSelection);
   const unsetNodesSelection = useStoreActions((actions) => actions.unsetNodesSelection);
+  const selectionModifierKey = getModifierKey(selectionKeyCode);
   const renderUserSelectionPane = selectionActive || selectionKeyPressed;
 
   if (!elementsSelectable || !renderUserSelectionPane) {
@@ -59,6 +62,10 @@ export default memo(({ selectionKeyPressed }: UserSelectionProps) => {
   }
 
   const onMouseDown = (event: React.MouseEvent): void => {
+    if (selectionModifierKey && !event[selectionModifierKey]) {
+      return;
+    }
+
     const mousePos = getMousePosition(event);
     if (!mousePos) {
       return;
@@ -68,7 +75,7 @@ export default memo(({ selectionKeyPressed }: UserSelectionProps) => {
   };
 
   const onMouseMove = (event: React.MouseEvent): void => {
-    if (!selectionKeyPressed || !selectionActive) {
+    if (!selectionKeyPressed || !selectionActive || (selectionModifierKey && !event[selectionModifierKey])) {
       return;
     }
     const mousePos = getMousePosition(event);

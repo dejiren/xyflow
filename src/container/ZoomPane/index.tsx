@@ -3,13 +3,14 @@ import { zoom, zoomIdentity } from 'd3-zoom';
 import { select, pointer } from 'd3-selection';
 
 import { clamp } from '../../utils';
-import useKeyPress from '../../hooks/useKeyPress';
+import useKeyPress, { getModifierKey } from '../../hooks/useKeyPress';
 import useResizeHandler from '../../hooks/useResizeHandler';
 import { useStoreState, useStoreActions, useStore } from '../../store/hooks';
 import { FlowTransform, TranslateExtent, PanOnScrollMode, KeyCode } from '../../types';
 
 interface ZoomPaneProps {
   selectionKeyPressed: boolean;
+  selectionKeyCode?: KeyCode;
   elementsSelectable?: boolean;
   zoomOnScroll?: boolean;
   zoomOnPinch?: boolean;
@@ -53,6 +54,7 @@ const ZoomPane = ({
   panOnScrollMode = PanOnScrollMode.Free,
   zoomOnDoubleClick = true,
   selectionKeyPressed,
+  selectionKeyCode,
   elementsSelectable,
   paneMoveable = true,
   defaultPosition = [0, 0],
@@ -74,6 +76,7 @@ const ZoomPane = ({
   const updateTransform = useStoreActions((actions) => actions.updateTransform);
 
   const zoomActivationKeyPressed = useKeyPress(zoomActivationKeyCode);
+  const selectionModifierKey = getModifierKey(selectionKeyCode);
 
   useResizeHandler(zoomPane);
 
@@ -232,7 +235,12 @@ const ZoomPane = ({
         }
 
         // during a selection we prevent all other interactions
-        if (selectionKeyPressed) {
+        if (
+          selectionKeyPressed &&
+          ((event.type !== 'mousedown' && event.type !== 'touchstart') ||
+            !selectionModifierKey ||
+            event[selectionModifierKey])
+        ) {
           return false;
         }
 
@@ -284,6 +292,8 @@ const ZoomPane = ({
     zoomOnDoubleClick,
     paneMoveable,
     selectionKeyPressed,
+    selectionModifierKey,
+    selectionKeyCode,
     elementsSelectable,
     zoomActivationKeyPressed,
   ]);

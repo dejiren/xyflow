@@ -15,6 +15,61 @@ describe('Basic Flow Rendering', () => {
     cy.get('.react-flow__background');
   });
 
+  it('releases stale shift selection on pointerdown', () => {
+    cy.get('body').then(($body) => {
+      const win = $body[0].ownerDocument.defaultView;
+
+      $body[0].dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: 'Shift', shiftKey: true }));
+    });
+
+    cy.get('.react-flow__selectionpane').should('exist');
+    cy.get('body').then(($body) => {
+      const win = $body[0].ownerDocument.defaultView;
+
+      $body[0].dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true, shiftKey: false }));
+    });
+    cy.get('.react-flow__selectionpane').should('not.exist');
+  });
+
+  it('does not start selection on a stale shift mousedown', () => {
+    cy.get('body').then(($body) => {
+      const win = $body[0].ownerDocument.defaultView;
+
+      $body[0].dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: 'Shift', shiftKey: true }));
+    });
+
+    cy.get('.react-flow__selectionpane').should('exist');
+    cy.get('.react-flow__selectionpane').then(($selectionPane) => {
+      const win = $selectionPane[0].ownerDocument.defaultView;
+
+      $selectionPane[0].dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, button: 0, shiftKey: false }));
+    });
+    cy.get('.react-flow__selection').should('not.exist');
+  });
+
+  it('pans the pane on the first drag after shift state becomes stale', () => {
+    const styleBeforeDrag = Cypress.$('.react-flow__nodes').css('transform');
+
+    cy.get('body').then(($body) => {
+      const win = $body[0].ownerDocument.defaultView;
+
+      $body[0].dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: 'Shift', shiftKey: true }));
+    });
+
+    cy.get('.react-flow__selectionpane').should('exist');
+    cy.window().then((win) => {
+      cy.get('.react-flow__selectionpane')
+        .trigger('mousedown', 'topLeft', { which: 1, shiftKey: false, view: win })
+        .trigger('mousemove', 'bottomLeft', { which: 1, shiftKey: false, view: win })
+        .trigger('mouseup', { force: true, shiftKey: false, view: win })
+        .then(() => {
+          const styleAfterDrag = Cypress.$('.react-flow__nodes').css('transform');
+          expect(styleBeforeDrag).to.not.equal(styleAfterDrag);
+        });
+    });
+    cy.get('.react-flow__selection').should('not.exist');
+  });
+
   it('selects two nodes by clicks', () => {
     cy.get('body').type('{cmd}', { release: false });
     cy.get('.react-flow__node:first')

@@ -1232,6 +1232,30 @@ var getHostForElement = function getHostForElement(element) {
   return ((_element$getRootNode = element.getRootNode) === null || _element$getRootNode === void 0 ? void 0 : _element$getRootNode.call(element)) || ((_window = window) === null || _window === void 0 ? void 0 : _window.document);
 };
 
+var getModifierKey = function getModifierKey(keyCode) {
+  switch (keyCode) {
+    case 'Alt':
+    case 18:
+      return 'altKey';
+
+    case 'Control':
+    case 17:
+      return 'ctrlKey';
+
+    case 'Meta':
+    case 91:
+    case 92:
+    case 224:
+      return 'metaKey';
+
+    case 'Shift':
+    case 16:
+      return 'shiftKey';
+
+    default:
+      return undefined;
+  }
+};
 var useKeyPress = (function (keyCode) {
   var _useState = React$1.useState(false),
       _useState2 = _slicedToArray$1(_useState, 2),
@@ -1240,6 +1264,8 @@ var useKeyPress = (function (keyCode) {
 
   React$1.useEffect(function () {
     if (typeof keyCode !== 'undefined') {
+      var modifierKey = getModifierKey(keyCode);
+
       var downHandler = function downHandler(event) {
         if (!isInputDOMNode(event) && (event.key === keyCode || event.keyCode === keyCode)) {
           event.preventDefault();
@@ -1257,13 +1283,32 @@ var useKeyPress = (function (keyCode) {
         return setKeyPressed(false);
       };
 
+      var pointerEventOptions = {
+        capture: true
+      };
+
+      var pointerHandler = function pointerHandler(event) {
+        if (modifierKey && !event[modifierKey]) {
+          setKeyPressed(false);
+        }
+      };
+
       window.addEventListener('keydown', downHandler);
       window.addEventListener('keyup', upHandler);
       window.addEventListener('blur', resetHandler);
+
+      if (modifierKey) {
+        window.addEventListener('pointerdown', pointerHandler, pointerEventOptions);
+      }
+
       return function () {
         window.removeEventListener('keydown', downHandler);
         window.removeEventListener('keyup', upHandler);
         window.removeEventListener('blur', resetHandler);
+
+        if (modifierKey) {
+          window.removeEventListener('pointerdown', pointerHandler, pointerEventOptions);
+        }
       };
     }
   }, [keyCode, setKeyPressed]);
@@ -5004,6 +5049,7 @@ var ZoomPane = function ZoomPane(_ref) {
       _ref$zoomOnDoubleClic = _ref.zoomOnDoubleClick,
       zoomOnDoubleClick = _ref$zoomOnDoubleClic === void 0 ? true : _ref$zoomOnDoubleClic,
       selectionKeyPressed = _ref.selectionKeyPressed,
+      selectionKeyCode = _ref.selectionKeyCode,
       elementsSelectable = _ref.elementsSelectable,
       _ref$paneMoveable = _ref.paneMoveable,
       paneMoveable = _ref$paneMoveable === void 0 ? true : _ref$paneMoveable,
@@ -5039,6 +5085,7 @@ var ZoomPane = function ZoomPane(_ref) {
     return actions.updateTransform;
   });
   var zoomActivationKeyPressed = useKeyPress(zoomActivationKeyCode);
+  var selectionModifierKey = getModifierKey(selectionKeyCode);
   useResizeHandler(zoomPane);
   React$1.useEffect(function () {
     if (zoomPane.current) {
@@ -5167,7 +5214,7 @@ var ZoomPane = function ZoomPane(_ref) {
         } // during a selection we prevent all other interactions
 
 
-        if (selectionKeyPressed) {
+        if (selectionKeyPressed && ((event.type !== 'mousedown' && event.type !== 'touchstart') || !selectionModifierKey || event[selectionModifierKey])) {
           return false;
         } // if zoom on double click is disabled, we prevent the double click event
 
@@ -5208,7 +5255,7 @@ var ZoomPane = function ZoomPane(_ref) {
         return (!event.ctrlKey || event.type === 'wheel') && !event.button;
       });
     }
-  }, [d3Zoom, zoomOnScroll, zoomOnPinch, panOnScroll, zoomOnDoubleClick, paneMoveable, selectionKeyPressed, elementsSelectable, zoomActivationKeyPressed]);
+  }, [d3Zoom, zoomOnScroll, zoomOnPinch, panOnScroll, zoomOnDoubleClick, paneMoveable, selectionKeyPressed, selectionModifierKey, selectionKeyCode, elementsSelectable, zoomActivationKeyPressed]);
   return /*#__PURE__*/React__default["default"].createElement("div", {
     className: "react-flow__renderer react-flow__zoompane",
     ref: zoomPane
@@ -5253,7 +5300,8 @@ var SelectionRect = function SelectionRect() {
 };
 
 var UserSelection = /*#__PURE__*/React$1.memo(function (_ref) {
-  var selectionKeyPressed = _ref.selectionKeyPressed;
+  var selectionKeyPressed = _ref.selectionKeyPressed,
+      selectionKeyCode = _ref.selectionKeyCode;
   var selectionActive = useStoreState(function (state) {
     return state.selectionActive;
   });
@@ -5272,6 +5320,7 @@ var UserSelection = /*#__PURE__*/React$1.memo(function (_ref) {
   var unsetNodesSelection = useStoreActions(function (actions) {
     return actions.unsetNodesSelection;
   });
+  var selectionModifierKey = getModifierKey(selectionKeyCode);
   var renderUserSelectionPane = selectionActive || selectionKeyPressed;
 
   if (!elementsSelectable || !renderUserSelectionPane) {
@@ -5279,6 +5328,10 @@ var UserSelection = /*#__PURE__*/React$1.memo(function (_ref) {
   }
 
   var onMouseDown = function onMouseDown(event) {
+    if (selectionModifierKey && !event[selectionModifierKey]) {
+      return;
+    }
+
     var mousePos = getMousePosition(event);
 
     if (!mousePos) {
@@ -5289,7 +5342,7 @@ var UserSelection = /*#__PURE__*/React$1.memo(function (_ref) {
   };
 
   var onMouseMove = function onMouseMove(event) {
-    if (!selectionKeyPressed || !selectionActive) {
+    if (!selectionKeyPressed || !selectionActive || selectionModifierKey && !event[selectionModifierKey]) {
       return;
     }
 
@@ -8417,6 +8470,7 @@ var FlowRenderer = function FlowRenderer(_ref) {
     onMoveStart: onMoveStart,
     onMoveEnd: onMoveEnd,
     selectionKeyPressed: selectionKeyPressed,
+    selectionKeyCode: selectionKeyCode,
     elementsSelectable: elementsSelectable,
     zoomOnScroll: zoomOnScroll,
     zoomOnPinch: zoomOnPinch,
@@ -8431,7 +8485,8 @@ var FlowRenderer = function FlowRenderer(_ref) {
     zoomActivationKeyCode: zoomActivationKeyCode,
     preventScrolling: preventScrolling
   }, children, /*#__PURE__*/React__default["default"].createElement(UserSelection, {
-    selectionKeyPressed: selectionKeyPressed
+    selectionKeyPressed: selectionKeyPressed,
+    selectionKeyCode: selectionKeyCode
   }), nodesSelectionActive && /*#__PURE__*/React__default["default"].createElement(NodesSelection, {
     onSelectionDragStart: onSelectionDragStart,
     onSelectionDrag: onSelectionDrag,

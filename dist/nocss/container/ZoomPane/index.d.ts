@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react';
 import { FlowTransform, TranslateExtent, PanOnScrollMode, KeyCode } from '../../types';
 interface ZoomPaneProps {
     selectionKeyPressed: boolean;
+    selectionKeyCode?: KeyCode;
     elementsSelectable?: boolean;
     zoomOnScroll?: boolean;
     zoomOnPinch?: boolean;
@@ -20,5 +21,5 @@ interface ZoomPaneProps {
     preventScrolling?: boolean;
     children: ReactNode;
 }
-declare const ZoomPane: ({ onMove, onMoveStart, onMoveEnd, zoomOnScroll, zoomOnPinch, panOnScroll, panOnScrollSpeed, panOnScrollMode, zoomOnDoubleClick, selectionKeyPressed, elementsSelectable, paneMoveable, defaultPosition, defaultZoom, translateExtent, zoomActivationKeyCode, preventScrolling, children, }: ZoomPaneProps) => React.JSX.Element;
+declare const ZoomPane: ({ onMove, onMoveStart, onMoveEnd, zoomOnScroll, zoomOnPinch, panOnScroll, panOnScrollSpeed, panOnScrollMode, zoomOnDoubleClick, selectionKeyPressed, selectionKeyCode, elementsSelectable, paneMoveable, defaultPosition, defaultZoom, translateExtent, zoomActivationKeyCode, preventScrolling, children, }: ZoomPaneProps) => React.JSX.Element;
 export default ZoomPane;
