@@ -14,15 +14,18 @@ describe('Interaction Flow Rendering', () => {
     cy.get('.react-flow__zoomonpinch').click();
     cy.get('.react-flow__panonscroll').click();
 
-    cy.get('.react-flow__renderer')
-      .trigger('wheel', 'topLeft', { deltaY: -100, ctrlKey: true })
-      .then(() => {
-        const transform = Cypress.$('.react-flow__nodes').css('transform');
-        const zoom = Number(transform.match(/^matrix\(([^,]+)/)?.[1]);
+    cy.get('.react-flow__renderer').trigger('wheel', 'topLeft', {
+      deltaY: -100,
+      ctrlKey: true,
+    });
 
-        expect(zoom).to.be.greaterThan(1);
-        expect(zoom).to.be.lessThan(2);
-      });
+    cy.get('.react-flow__nodes').should(($el) => {
+      const transform = $el.css('transform');
+      const zoom = Number(transform.match(/^matrix(?:3d)?\(([^,]+)/)?.[1]);
+
+      expect(zoom).to.be.greaterThan(1);
+      expect(zoom).to.be.lessThan(2);
+    });
   });
 
   it('tries to select a node by click', () => {
