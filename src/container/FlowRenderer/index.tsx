@@ -92,6 +92,7 @@ const FlowRenderer = ({
       onMoveStart={onMoveStart}
       onMoveEnd={onMoveEnd}
       selectionKeyPressed={selectionKeyPressed}
+      selectionKeyCode={selectionKeyCode}
       elementsSelectable={elementsSelectable}
       zoomOnScroll={zoomOnScroll}
       zoomOnPinch={zoomOnPinch}
@@ -107,7 +108,7 @@ const FlowRenderer = ({
       preventScrolling={preventScrolling}
     >
       {children}
-      <UserSelection selectionKeyPressed={selectionKeyPressed} />
+      <UserSelection selectionKeyPressed={selectionKeyPressed} selectionKeyCode={selectionKeyCode} />
       {nodesSelectionActive && (
         <NodesSelection
           onSelectionDragStart={onSelectionDragStart}
